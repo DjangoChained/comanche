@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+sub superviseur {
+    # Journalisation
+    # TODO
+}
+
+sub repartisseur {
+    # Répartisseur de requêtes
+    # TODO
+}
+
+sub ouvrier {
+    # Traitement d'une requête
+    # TODO
+}
+
+sub load_config {
+    # Chargement de la configuration du serveur
+    # TODO
+}
+
+sub send_response {
+    # Envoyer une réponse HTTP au client
+    # TODO
+}
+
+sub send_error {
+    # Envoyer une erreur HTTP au client
+    # TODO
+}
+
+if($#ARGV != 0 or uc $ARGV[0] ~~ ['start', 'stop', 'status']) {
+    die "Usage: comanche (start|stop|status)";
+}
+switch ($ARGV[0]) {
+    case 'start' {
+        # Démarrage du serveur
+        # TODO
+    }
+    case 'stop' {
+        # Arrêt propre du serveur
+        # TODO
+    }
+    case 'status' {
+        # État du serveur
+        # TODO
+    }
+}
