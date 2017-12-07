@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use Switch;
+
+my $pidfilepath = "/tmp/comanche.pid";
 
 sub superviseur {
     # Journalisation
@@ -8,8 +11,22 @@ sub superviseur {
 }
 
 sub repartisseur {
+    my $request_count = 0;
+    my @ouvriers = ();
+    # Traitement de signal pour le statut du serveur
+    $SIG{USR1} = sub {
+        print "PID ", $$, "\n";
+        print $request_count, " requêtes traitées depuis le démarrage\n";
+        print $#ouvriers + 1, " ouvriers : ", join(" ", @ouvriers), "\n";
+    };
+    # Arrêt du serveur
+    $SIG{QUIT} = sub {
+        # TODO
+        exit;
+    };
     # Répartisseur de requêtes
     # TODO
+    while(1) { }
 }
 
 sub ouvrier {
@@ -32,20 +49,39 @@ sub send_error {
     # TODO
 }
 
-if($#ARGV != 0 or uc $ARGV[0] ~~ ['start', 'stop', 'status']) {
-    die "Usage: comanche (start|stop|status)";
+sub get_repartisseur_pid {
+    # Obtenir l'ID du processus de répartisseur
+    open my ($pidfile), $pidfilepath or die "Impossible d'obtenir l'ID du processus serveur";
+    my $reppid = <$pidfile>;
+    close $pidfile;
+    return $reppid;
 }
-switch ($ARGV[0]) {
-    case 'start' {
-        # Démarrage du serveur
-        # TODO
-    }
-    case 'stop' {
-        # Arrêt propre du serveur
-        # TODO
-    }
-    case 'status' {
-        # État du serveur
-        # TODO
+
+if($#ARGV == 0) {
+    switch (lc $ARGV[0]) {
+        case 'start' {
+            # Démarrage du serveur
+            my $pid = fork;
+            if ($pid == 0) {
+                exit repartisseur();
+            } else {
+                open my ($pidfile), '>', $pidfilepath or die "Impossible d'enregistrer le PID serveur";
+                print $pidfile $pid, "\n";
+                close $pidfile;
+                exit;
+            }
+        }
+        case 'stop' {
+            # Arrêt propre du serveur
+            my $id = get_repartisseur_pid();
+            kill 'QUIT', $id;
+            exit;
+        }
+        case 'status' {
+            # État du serveur
+            kill 'USR1', get_repartisseur_pid();
+            exit;
+        }
     }
 }
+print STDERR "Usage: comanche (start|stop|status)\n";
