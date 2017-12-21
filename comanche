@@ -17,6 +17,9 @@ my %httpcodes = (
     503 => "Service Unavailable",
     505 => "HTTP Version Not Supported"
 );
+my @months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
+my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
 
 sub superviseur {
     # Journalisation
@@ -87,9 +90,18 @@ sub load_config {
 	return %config;
 }
 
-sub send_response {
-    # Envoyer une réponse HTTP au client
-    # TODO
+sub send_response_headers {
+    # Envoyer les headers de réponse HTTP au client
+    $client = shift;
+    $code = shift;
+    $length = shift;
+    $type = shift;
+    print $client "HTTP/1.1 ", $code, " ", $httpcodes{$code}, "\r\n";
+    ($sec, $min, $hour, $day, $month, $year, $weekday) = gmtime();
+    printf($client, "Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $hour, $min, $sec);
+    print $client "Server: comanche/1.0\r\n";
+    print $client "Content-Length: $length\r\n";
+    print $client "Content-Type: $type\r\n\r\n";
 }
 
 sub send_error {
