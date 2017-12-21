@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use Switch;
+use File::stat;
 use Socket;
 use POSIX ":sys_wait_h";
 
@@ -24,7 +25,14 @@ my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
 
 sub superviseur {
     # Journalisation
-    # TODO
+    my $fh;
+    $SIG{QUIT} = sub {
+    	close $fh;
+    	exit;
+    }
+    my %config = load_config();
+    open($fh, '<', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
+    print $fh $_ while(<STDIN>);
 }
 
 sub repartisseur {
@@ -93,6 +101,7 @@ sub load_config {
 	  	$row = substr($row, 4);
 	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
 	  }
+	  if(!-e $config{'error'}){die "$!"};
 	}
 	close $fh;
 	return %config;
@@ -114,7 +123,14 @@ sub send_response_headers {
 
 sub send_error {
     # Envoyer une erreur HTTP au client
-    # TODO
+    my %config = load_config();
+    $client = shift;
+	$errorcode = shift;
+    send_response_headers($client, $code, stat($config{'error'})->size, "text/html");
+    open( my $fh, '<', $config{'error'} ) or die "Impossible d'ouvrir $config{'error'}: $!";
+    print $client $_ while(<$fh>);
+    close($fh);
+    close($client);
 }
 
 sub get_repartisseur_pid {
@@ -144,6 +160,7 @@ if($#ARGV == 0) {
             # Arrêt propre du serveur
             my $id = get_repartisseur_pid();
             kill 'QUIT', $id;
+            unlink $pidfilepath;
             exit;
         }
         case 'status' {
