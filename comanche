@@ -29,9 +29,9 @@ sub superviseur {
     $SIG{QUIT} = sub {
     	close $fh;
     	exit;
-    }
+    };
     my %config = load_config();
-    open($fh, '<', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
+    open($fh, '>', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
     print $fh $_ while(<STDIN>);
 }
 
@@ -101,9 +101,9 @@ sub load_config {
 	  	$row = substr($row, 4);
 	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
 	  }
-	  if(!-e $config{'error'}){die "$!"};
 	}
 	close $fh;
+    if(!-e $config{'error'}) { die "$!"; }
 	return %config;
 }
 
@@ -115,7 +115,7 @@ sub send_response_headers {
     my $type = shift;
     print $CLIENT "HTTP/1.1 ", $code, " ", $httpcodes{$code}, "\r\n";
     my ($sec, $min, $hour, $day, $month, $year, $weekday) = gmtime();
-    printf($CLIENT, "Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $hour, $min, $sec);
+    print $CLIENT sprintf("Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $year, $hour, $min, $sec);
     print $CLIENT "Server: comanche/1.0\r\n";
     print $CLIENT "Content-Length: $length\r\n";
     print $CLIENT "Content-Type: $type\r\n\r\n";
@@ -124,9 +124,9 @@ sub send_response_headers {
 sub send_error {
     # Envoyer une erreur HTTP au client
     my %config = load_config();
-    $client = shift;
-	$errorcode = shift;
-    send_response_headers($client, $code, stat($config{'error'})->size, "text/html");
+    my $client = shift;
+	my $errorcode = shift;
+    send_response_headers($client, $errorcode, stat($config{'error'})->size, "text/html");
     open( my $fh, '<', $config{'error'} ) or die "Impossible d'ouvrir $config{'error'}: $!";
     print $client $_ while(<$fh>);
     close($fh);
