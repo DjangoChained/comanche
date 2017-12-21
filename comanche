@@ -2,9 +2,25 @@
 use strict;
 use warnings;
 use Switch;
+use Socket;
+use POSIX ":sys_wait_h";
 
 my $pidfilepath = "/tmp/comanche.pid";
 my $configfilepath = "comanche.conf";
+my %httpcodes = (
+    200 => "OK",
+    400 => "Bad Request",
+    403 => "Forbidden",
+    404 => "Not Found",
+    405 => "Method Not Allowed",
+    415 => "Unsupported Media Type",
+    418 => "I'm A Teapot",
+    503 => "Service Unavailable",
+    505 => "HTTP Version Not Supported"
+);
+my @months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
+my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
 
 sub superviseur {
     # Journalisation
@@ -12,22 +28,55 @@ sub superviseur {
 }
 
 sub repartisseur {
+    # Répartisseur de requêtes
     my $request_count = 0;
     my @ouvriers = ();
-    # Traitement de signal pour le statut du serveur
-    $SIG{USR1} = sub {
-        print "PID ", $$, "\n";
-        print $request_count, " requêtes traitées depuis le démarrage\n";
-        print $#ouvriers + 1, " ouvriers : ", join(" ", @ouvriers), "\n";
-    };
-    # Arrêt du serveur
-    $SIG{QUIT} = sub {
-        # TODO
+    my %config = load_config();
+    my $LOGGER;
+    my $loggerpid = open($LOGGER, "|-");
+    if ($loggerpid == 0) {
+        superviseur();
         exit;
-    };
-    # Répartisseur de requêtes
-    # TODO
-    while(1) { }
+    } else {
+        # Signal pour le statut du serveur
+        $SIG{USR1} = sub {
+            print "PID ", $$, "\n";
+            print $request_count, " requêtes traitées depuis le démarrage\n";
+            print $#ouvriers + 1, " ouvriers : ", join(" ", @ouvriers), "\n";
+        };
+        # Signal d'arrêt du serveur
+        $SIG{QUIT} = sub {
+            foreach (@ouvriers) {
+                kill 'QUIT', $_;
+            }
+            kill 'QUIT', $loggerpid;
+            while(waitpid(-1, WNOHANG) > 0) { }
+            exit;
+        };
+        autoflush $LOGGER 1;
+        socket(my $SRV, PF_INET, SOCK_STREAM, getprotobyname('tcp'));
+        setsockopt($SRV, SOL_SOCKET, SO_REUSEADDR, 1);
+        my $ip = sockaddr_in($config{"port"}, INADDR_ANY);
+        bind($SRV, $ip) or die "Erreur au démarrage du serveur : $!";
+        listen($SRV, SOMAXCONN) or die "Erreur au démarrage du serveur : $!";
+        print $LOGGER time, ";start;local;", $config{"port"}, ";;;";
+        while(accept(my $CLIENT, $SRV)) {
+	        while((my $corpsepid = waitpid(-1, WNOHANG)) > 0) {
+                @ouvriers = grep { $_ != $corpsepid } @ouvriers;
+            }
+            if($#ouvriers >= $config{"clients"}) {
+                send_error($CLIENT, 503);
+                next;
+            }
+            my $pid = fork;
+            if ($pid != 0) {
+                push @ouvriers, $pid;
+            } else {
+                ouvrier($CLIENT);
+                exit;
+            }
+        }
+    }
 }
 
 sub ouvrier {
@@ -40,7 +89,7 @@ sub load_config {
 	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
 	while (my $row = <$fh>) {
 	  chomp $row;
-	  if(substr($row, 0, 3) eq "set"){	
+	  if(substr($row, 0, 3) eq "set"){
 	  	$row = substr($row, 4);
 	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
 	  }
@@ -49,9 +98,18 @@ sub load_config {
 	return %config;
 }
 
-sub send_response {
-    # Envoyer une réponse HTTP au client
-    # TODO
+sub send_response_headers {
+    # Envoyer les headers de réponse HTTP au client
+    my $CLIENT = shift;
+    my $code = shift;
+    my $length = shift;
+    my $type = shift;
+    print $CLIENT "HTTP/1.1 ", $code, " ", $httpcodes{$code}, "\r\n";
+    my ($sec, $min, $hour, $day, $month, $year, $weekday) = gmtime();
+    printf($CLIENT, "Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $hour, $min, $sec);
+    print $CLIENT "Server: comanche/1.0\r\n";
+    print $CLIENT "Content-Length: $length\r\n";
+    print $CLIENT "Content-Type: $type\r\n\r\n";
 }
 
 sub send_error {
@@ -73,7 +131,8 @@ if($#ARGV == 0) {
             # Démarrage du serveur
             my $pid = fork;
             if ($pid == 0) {
-                exit repartisseur();
+                repartisseur();
+                exit;
             } else {
                 open my ($pidfile), '>', $pidfilepath or die "Impossible d'enregistrer le PID serveur";
                 print $pidfile $pid, "\n";
