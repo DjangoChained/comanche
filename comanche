@@ -2,22 +2,21 @@
 use strict;
 use warnings;
 use Switch;
+use File::stat;
 
 my $pidfilepath = "/tmp/comanche.pid";
 my $configfilepath = "comanche.conf";
 
 sub superviseur {
     # Journalisation
-    $logger = shift;
-    my %config = load_config();
-    open( my $fh, '<', $config{log} ) or die "Impossible d'ouvrir $config{log}: $!";
-    while(<$logger>){
-    	print $fh $_;
-    }
+    my $fh;
     $SIG{QUIT} = sub {
     	close $fh;
     	exit;
     }
+    my %config = load_config();
+    open($fh, '<', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
+    print $fh $_ while(<STDIN>);
 }
 
 sub repartisseur {
@@ -53,6 +52,7 @@ sub load_config {
 	  	$row = substr($row, 4);
 	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
 	  }
+	  if(!-e $config{'error'}){die "$!"};
 	}
 	close $fh;
 	return %config;
@@ -65,7 +65,14 @@ sub send_response {
 
 sub send_error {
     # Envoyer une erreur HTTP au client
-    # TODO
+    my %config = load_config();
+    $client = shift;
+	$errorcode = shift;
+    send_response_headers($client, $code, stat($config{'error'})->size, "text/html");
+    open( my $fh, '<', $config{'error'} ) or die "Impossible d'ouvrir $config{'error'}: $!";
+    print $client $_ while(<$fh>);
+    close($fh);
+    close($client);
 }
 
 sub get_repartisseur_pid {
