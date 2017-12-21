@@ -5,6 +5,17 @@ use Switch;
 use Socket;
 
 my $pidfilepath = "/tmp/comanche.pid";
+my %httpcodes = (
+    200 => "OK",
+    400 => "Bad Request",
+    403 => "Forbidden",
+    404 => "Not Found",
+    405 => "Method Not Allowed",
+    415 => "Unsupported Media Type",
+    418 => "I'm A Teapot",
+    503 => "Service Unavailable",
+    505 => "HTTP Version Not Supported"
+);
 
 sub superviseur {
     # Journalisation
@@ -43,7 +54,7 @@ sub repartisseur {
         print LOGGER time, ";start;local;", $config{"port"}, ";;;";
         while(accept(CLIENT, SRV)) {
             if($#ouvriers >= $config{"clients"}) {
-                send_error(CLIENT, "503");
+                send_error(CLIENT, 503);
                 next;
             }
             $pid = fork;
