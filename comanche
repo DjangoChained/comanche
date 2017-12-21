@@ -4,6 +4,7 @@ use warnings;
 use Switch;
 
 my $pidfilepath = "/tmp/comanche.pid";
+my $configfilepath = "comanche.conf";
 
 sub superviseur {
     # Journalisation
@@ -35,8 +36,17 @@ sub ouvrier {
 }
 
 sub load_config {
-    # Chargement de la configuration du serveur
-    # TODO
+	my %config = ();
+	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
+	while (my $row = <$fh>) {
+	  chomp $row;
+	  if(substr($row, 0, 3) eq "set"){	
+	  	$row = substr($row, 4);
+	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
+	  }
+	}
+	close $fh;
+	return %config;
 }
 
 sub send_response {
