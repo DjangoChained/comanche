@@ -15,7 +15,7 @@ my %httpcodes = (
     404 => "Not Found",
     405 => "Method Not Allowed",
     415 => "Unsupported Media Type",
-    418 => "I'm A Teapot",
+    418 => "I'm a teapot",
     503 => "Service Unavailable",
     505 => "HTTP Version Not Supported"
 );
@@ -25,14 +25,15 @@ my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
 
 sub superviseur {
     # Journalisation
-    my $fh;
+    my %config = load_config();
+    open(my $fh, '>>', $config{'logfile'} ) or die "Impossible d'ouvrir $config{logfile}: $!";
+    autoflush $fh 1;
     $SIG{QUIT} = sub {
+        print $fh time, ";stop;local;", $config{"port"}, ";;;\n";
     	close $fh;
     	exit;
     };
-    my %config = load_config();
-    open($fh, '>', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
-    print $fh $_ while(<STDIN>);
+    print $fh $_ while <STDIN>;
 }
 
 sub repartisseur {
@@ -58,7 +59,7 @@ sub repartisseur {
                 kill 'QUIT', $_;
             }
             kill 'QUIT', $loggerpid;
-            while(waitpid(-1, WNOHANG) > 0) { }
+            1 while(waitpid(-1, WNOHANG) > 0);
             exit;
         };
         autoflush $LOGGER 1;
@@ -67,7 +68,7 @@ sub repartisseur {
         my $ip = sockaddr_in($config{"port"}, INADDR_ANY);
         bind($SRV, $ip) or die "Erreur au démarrage du serveur : $!";
         listen($SRV, SOMAXCONN) or die "Erreur au démarrage du serveur : $!";
-        print $LOGGER time, ";start;local;", $config{"port"}, ";;;";
+        print $LOGGER time, ";start;local;", $config{"port"}, ";;;\n";
         while(accept(my $CLIENT, $SRV)) {
 	        while((my $corpsepid = waitpid(-1, WNOHANG)) > 0) {
                 @ouvriers = grep { $_ != $corpsepid } @ouvriers;
@@ -80,7 +81,7 @@ sub repartisseur {
             if ($pid != 0) {
                 push @ouvriers, $pid;
             } else {
-                ouvrier($CLIENT);
+                ouvrier($CLIENT, $LOGGER);
                 exit;
             }
         }
@@ -89,7 +90,18 @@ sub repartisseur {
 
 sub ouvrier {
     # Traitement d'une requête
-    # TODO
+    my $CLIENT = shift;
+    my $LOGGER = shift;
+    my ($method, $path, $version) = split /\s/, <$CLIENT>, 3;
+    if($version !~ /HTTP\/1.1/) {
+        send_error($CLIENT, 505); exit;
+    }
+    if($method ne "GET") {
+        send_error($CLIENT, 405); exit;
+    }
+    # TODO: Gestion des projections et logging
+    print $LOGGER time, ";;;;;;", "\n";
+    send_error($CLIENT, 404); exit;
 }
 
 sub load_config {
@@ -115,7 +127,7 @@ sub send_response_headers {
     my $type = shift;
     print $CLIENT "HTTP/1.1 ", $code, " ", $httpcodes{$code}, "\r\n";
     my ($sec, $min, $hour, $day, $month, $year, $weekday) = gmtime();
-    print $CLIENT sprintf("Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $year, $hour, $min, $sec);
+    print $CLIENT sprintf("Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], 1900 + $year, $hour, $min, $sec);
     print $CLIENT "Server: comanche/1.0\r\n";
     print $CLIENT "Content-Length: $length\r\n";
     print $CLIENT "Content-Type: $type\r\n\r\n";
