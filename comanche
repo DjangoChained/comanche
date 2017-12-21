@@ -8,7 +8,16 @@ my $configfilepath = "comanche.conf";
 
 sub superviseur {
     # Journalisation
-    # TODO
+    $logger = shift;
+    my %config = load_config();
+    open( my $fh, '<', $config{log} ) or die "Impossible d'ouvrir $config{log}: $!";
+    while(<$logger>){
+    	print $fh $_;
+    }
+    $SIG{QUIT} = sub {
+    	close $fh;
+    	exit;
+    }
 }
 
 sub repartisseur {
@@ -85,6 +94,7 @@ if($#ARGV == 0) {
             # Arrêt propre du serveur
             my $id = get_repartisseur_pid();
             kill 'QUIT', $id;
+            unlink $pidfilepath;
             exit;
         }
         case 'status' {
