@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use Switch;
+use Socket;
 
 my $pidfilepath = "/tmp/comanche.pid";
 
@@ -11,22 +12,48 @@ sub superviseur {
 }
 
 sub repartisseur {
+    # Répartisseur de requêtes
     my $request_count = 0;
     my @ouvriers = ();
-    # Traitement de signal pour le statut du serveur
-    $SIG{USR1} = sub {
-        print "PID ", $$, "\n";
-        print $request_count, " requêtes traitées depuis le démarrage\n";
-        print $#ouvriers + 1, " ouvriers : ", join(" ", @ouvriers), "\n";
-    };
-    # Arrêt du serveur
-    $SIG{QUIT} = sub {
-        # TODO
-        exit;
-    };
-    # Répartisseur de requêtes
-    # TODO
-    while(1) { }
+    my %config = load_config;
+    my $loggerpid = open(LOGGER, "|-");
+    if ($loggerpid == 0) {
+        exit superviseur(LOGGER);
+    } else {
+        # Signal pour le statut du serveur
+        $SIG{USR1} = sub {
+            print "PID ", $$, "\n";
+            print $request_count, " requêtes traitées depuis le démarrage\n";
+            print $#ouvriers + 1, " ouvriers : ", join(" ", @ouvriers), "\n";
+        };
+        # Signal d'arrêt du serveur
+        $SIG{QUIT} = sub {
+            foreach (@ouvriers) {
+                kill 'QUIT', $_;
+            }
+            kill 'QUIT', $loggerpid;
+            exit;
+        };
+        autoflush LOGGER 1;
+        socket(SRV, PF_INET, SOCK_STREAM, getprotobyname('tcp'));
+        setsockopt(SRV, SOL_SOCKET, SO_REUSEADDR, 1);
+        $ip = sockaddr_in($config{"port"}, INADDR_ANY);
+        bind(SRV, $ip) or die "Erreur au démarrage du serveur : $!";
+        listen(SRV, $config{"clients"}) or die "Erreur au démarrage du serveur : $!";
+        print LOGGER time, ";start;local;", $config{"port"}, ";;;";
+        while(accept(CLIENT, SRV)) {
+            if($#ouvriers >= $config{"clients"}) {
+                send_error(CLIENT, "503");
+                next;
+            }
+            $pid = fork;
+            if ($pid != 0) {
+                push @ouvriers $pid;
+            } else {
+                ouvrier(CLIENT);
+            }
+        }
+    }
 }
 
 sub ouvrier {
