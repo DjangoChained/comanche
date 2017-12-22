@@ -106,6 +106,19 @@ sub load_config {
 	return %config;
 }
 
+sub load_route {
+	my %routes = ();
+	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
+	while (my $row = <$fh>) {
+	  chomp $row;
+	  if($row =~ /^route\s+(.+)\s+to\s+(.*)$/){
+	  	$routes{$1} = $2;
+	  }
+	}
+	close $fh;
+	return %routes;
+}
+
 sub send_response_headers {
     # Envoyer les headers de réponse HTTP au client
     my $CLIENT = shift;
