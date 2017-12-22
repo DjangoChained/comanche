@@ -4,7 +4,7 @@ use warnings;
 use Switch;
 use File::stat;
 use Socket;
-use POSIX ":sys_wait_h";
+use POSIX qw(:sys_wait_h :errno_h);
 
 my $pidfilepath = "/tmp/comanche.pid";
 my $configfilepath = "comanche.conf";
@@ -15,30 +15,31 @@ my %httpcodes = (
     404 => "Not Found",
     405 => "Method Not Allowed",
     415 => "Unsupported Media Type",
-    418 => "I'm A Teapot",
+    418 => "I'm a teapot",
     503 => "Service Unavailable",
     505 => "HTTP Version Not Supported"
 );
 my @months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
 my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
+my @ouvriers = ();
 
 sub superviseur {
     # Journalisation
-    my $fh;
+    my %config = load_config();
+    open(my $fh, '>>', $config{'logfile'} ) or die "Impossible d'ouvrir $config{logfile}: $!";
+    autoflush $fh 1;
     $SIG{QUIT} = sub {
+        print $fh time, ";stop;local;", $config{"port"}, ";;;\n";
     	close $fh;
     	exit;
-    }
-    my %config = load_config();
-    open($fh, '<', $config{'log'} ) or die "Impossible d'ouvrir $config{log}: $!";
-    print $fh $_ while(<STDIN>);
+    };
+    print $fh $_ while <STDIN>;
 }
 
 sub repartisseur {
     # Répartisseur de requêtes
     my $request_count = 0;
-    my @ouvriers = ();
     my %config = load_config();
     my $LOGGER;
     my $loggerpid = open($LOGGER, "|-");
@@ -58,20 +59,20 @@ sub repartisseur {
                 kill 'QUIT', $_;
             }
             kill 'QUIT', $loggerpid;
-            while(waitpid(-1, WNOHANG) > 0) { }
+            1 while(waitpid(-1, WNOHANG) > 0);
             exit;
         };
+        $SIG{CHLD} = "rest_in_pieces";
         autoflush $LOGGER 1;
         socket(my $SRV, PF_INET, SOCK_STREAM, getprotobyname('tcp'));
         setsockopt($SRV, SOL_SOCKET, SO_REUSEADDR, 1);
         my $ip = sockaddr_in($config{"port"}, INADDR_ANY);
         bind($SRV, $ip) or die "Erreur au démarrage du serveur : $!";
         listen($SRV, SOMAXCONN) or die "Erreur au démarrage du serveur : $!";
-        print $LOGGER time, ";start;local;", $config{"port"}, ";;;";
-        while(accept(my $CLIENT, $SRV)) {
-	        while((my $corpsepid = waitpid(-1, WNOHANG)) > 0) {
-                @ouvriers = grep { $_ != $corpsepid } @ouvriers;
-            }
+        print $LOGGER time, ";start;local;", $config{"port"}, ";;;\n";
+        while(1) {
+            accept(my $CLIENT, $SRV);
+            next if($!{EINTR});
             if($#ouvriers >= $config{"clients"}) {
                 send_error($CLIENT, 503);
                 next;
@@ -80,7 +81,7 @@ sub repartisseur {
             if ($pid != 0) {
                 push @ouvriers, $pid;
             } else {
-                ouvrier($CLIENT);
+                ouvrier($CLIENT, $LOGGER);
                 exit;
             }
         }
@@ -89,7 +90,18 @@ sub repartisseur {
 
 sub ouvrier {
     # Traitement d'une requête
-    # TODO
+    my $CLIENT = shift;
+    my $LOGGER = shift;
+    my ($method, $path, $version) = split /\s/, <$CLIENT>, 3;
+    if($version !~ /HTTP\/1.1/) {
+        send_error($CLIENT, 505); exit;
+    }
+    if($method ne "GET") {
+        send_error($CLIENT, 405); exit;
+    }
+    # TODO: Gestion des projections et logging
+    print $LOGGER time, ";;;;;;", "\n";
+    send_error($CLIENT, 404); exit;
 }
 
 sub load_config {
@@ -100,9 +112,9 @@ sub load_config {
 	  if($row =~ /^set\s+(.+)\s+(.*)$/){
 	  	$config{$1} = $2;
 	  }
-	  if(!-e $config{'error'}){die "$!"};
 	}
 	close $fh;
+    if(!-e $config{'error'}) { die "$!"; }
 	return %config;
 }
 
@@ -114,7 +126,7 @@ sub send_response_headers {
     my $type = shift;
     print $CLIENT "HTTP/1.1 ", $code, " ", $httpcodes{$code}, "\r\n";
     my ($sec, $min, $hour, $day, $month, $year, $weekday) = gmtime();
-    printf($CLIENT, "Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], $hour, $min, $sec);
+    print $CLIENT sprintf("Date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n", $days[$weekday], $day, $months[$month], 1900 + $year, $hour, $min, $sec);
     print $CLIENT "Server: comanche/1.0\r\n";
     print $CLIENT "Content-Length: $length\r\n";
     print $CLIENT "Content-Type: $type\r\n\r\n";
@@ -123,14 +135,21 @@ sub send_response_headers {
 sub send_error {
     # Envoyer une erreur HTTP au client
     my %config = load_config();
-    $client = shift;
-	$errorcode = shift;
-    send_response_headers($client, $code, stat($config{'error'})->size, "text/html");
+    my $client = shift;
+	my $errorcode = shift;
+    send_response_headers($client, $errorcode, stat($config{'error'})->size, "text/html");
     open( my $fh, '<', $config{'error'} ) or die "Impossible d'ouvrir $config{'error'}: $!";
     print $client $_ while(<$fh>);
     close($fh);
     close($client);
 }
+
+sub rest_in_pieces {
+    # Adresse les condoléances aux familles des ouvriers.
+    while ((my $corpsepid = waitpid(-1, &WNOHANG)) > 0) {
+        @ouvriers = grep { $_ != $corpsepid } @ouvriers;
+    }
+};
 
 sub get_repartisseur_pid {
     # Obtenir l'ID du processus de répartisseur
