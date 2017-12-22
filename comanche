@@ -119,6 +119,19 @@ sub load_route {
 	return %routes;
 }
 
+sub load_exec {
+	my %exec = ();
+	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
+	while (my $row = <$fh>) {
+	  chomp $row;
+	  if($row =~ /^exec\s+(.+)\s+from\s+(.*)$/){
+	  	$exec{$1} = $2;
+	  }
+	}
+	close $fh;
+	return %exec;
+}
+
 sub send_response_headers {
     # Envoyer les headers de réponse HTTP au client
     my $CLIENT = shift;
