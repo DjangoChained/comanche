@@ -4,7 +4,7 @@ use warnings;
 use Switch;
 use File::stat;
 use Socket;
-use POSIX ":sys_wait_h";
+use POSIX qw(:sys_wait_h :errno_h);
 
 my $pidfilepath = "/tmp/comanche.pid";
 my $configfilepath = "comanche.conf";
@@ -22,6 +22,7 @@ my %httpcodes = (
 my @months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
 my @days = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
+my @ouvriers = ();
 
 sub superviseur {
     # Journalisation
@@ -39,7 +40,6 @@ sub superviseur {
 sub repartisseur {
     # Répartisseur de requêtes
     my $request_count = 0;
-    my @ouvriers = ();
     my %config = load_config();
     my $LOGGER;
     my $loggerpid = open($LOGGER, "|-");
@@ -62,6 +62,7 @@ sub repartisseur {
             1 while(waitpid(-1, WNOHANG) > 0);
             exit;
         };
+        $SIG{CHLD} = "rest_in_pieces";
         autoflush $LOGGER 1;
         socket(my $SRV, PF_INET, SOCK_STREAM, getprotobyname('tcp'));
         setsockopt($SRV, SOL_SOCKET, SO_REUSEADDR, 1);
@@ -69,10 +70,9 @@ sub repartisseur {
         bind($SRV, $ip) or die "Erreur au démarrage du serveur : $!";
         listen($SRV, SOMAXCONN) or die "Erreur au démarrage du serveur : $!";
         print $LOGGER time, ";start;local;", $config{"port"}, ";;;\n";
-        while(accept(my $CLIENT, $SRV)) {
-	        while((my $corpsepid = waitpid(-1, WNOHANG)) > 0) {
-                @ouvriers = grep { $_ != $corpsepid } @ouvriers;
-            }
+        while(1) {
+            accept(my $CLIENT, $SRV);
+            next if($!{EINTR});
             if($#ouvriers >= $config{"clients"}) {
                 send_error($CLIENT, 503);
                 next;
@@ -144,6 +144,13 @@ sub send_error {
     close($fh);
     close($client);
 }
+
+sub rest_in_pieces {
+    # Adresse les condoléances aux familles des ouvriers.
+    while ((my $corpsepid = waitpid(-1, &WNOHANG)) > 0) {
+        @ouvriers = grep { $_ != $corpsepid } @ouvriers;
+    }
+};
 
 sub get_repartisseur_pid {
     # Obtenir l'ID du processus de répartisseur
