@@ -97,9 +97,8 @@ sub load_config {
 	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
 	while (my $row = <$fh>) {
 	  chomp $row;
-	  if(substr($row, 0, 3) eq "set"){
-	  	$row = substr($row, 4);
-	  	$config{substr($row, 0, index($row, ' '))} = substr($row, index($row, ' ')+1);
+	  if($row =~ /^set\s+(.+)\s+(.*)$/){
+	  	$config{$1} = $2;
 	  }
 	  if(!-e $config{'error'}){die "$!"};
 	}
