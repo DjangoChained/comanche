@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Switch;
 use File::stat;
+use File::MimeInfo;
 use Socket;
 use POSIX qw(:sys_wait_h :errno_h);
 
@@ -16,6 +17,7 @@ my %httpcodes = (
     405 => "Method Not Allowed",
     415 => "Unsupported Media Type",
     418 => "I'm a teapot",
+    500 => "Internal Server Error",
     503 => "Service Unavailable",
     505 => "HTTP Version Not Supported"
 );
@@ -80,6 +82,7 @@ sub repartisseur {
             my $pid = fork;
             if ($pid != 0) {
                 push @ouvriers, $pid;
+                $request_count++;
             } else {
                 ouvrier($CLIENT, $LOGGER);
                 exit;
@@ -121,7 +124,29 @@ sub ouvrier {
 sub proj_statique {
     # Gestion d'une projection statique
     my ($CLIENT, $LOGGER, $path) = (shift, shift, shift);
-    # TODO
+    my %config = load_config();
+    if (-d $path) {
+        if(-f "$path/$config{'index'}") {
+            proj_statique($CLIENT, $LOGGER, "$path/$config{'index'}"); exit;
+        }
+        #my $html = get_folder_view($path);
+        #send_response_headers($CLIENT, 200, unpack("%32b*", $html), "text/html");
+        #print $CLIENT $html;
+        #close($CLIENT); exit;
+        send_error($CLIENT, 418); exit;
+    } elsif (-f $path) {
+        my $file;
+        if(!open($file, $path)) {
+            # Logging ici
+            send_error($CLIENT, 500); exit;
+        }
+        send_response_headers($CLIENT, 200, stat($path)->size, mimetype($path));
+        print $CLIENT $_ while(<$file>);
+        close($file); close($CLIENT); exit;
+    } else {
+        # TODO: Logging ici
+        send_error($CLIENT, 404); exit;
+    }
 }
 
 sub proj_dynamique {
@@ -140,14 +165,14 @@ sub load_config {
 	  }
 	}
 	close $fh;
-    if(!-e $config{'error'}) { die "$!"; }
+    die "Fichier d'erreur introuvable : $!" if(!-e $config{'error'});
 	return %config;
 }
 
 sub load_route {
 	my %routes = ();
-	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
-	while (my $row = <$fh>) {
+	open( my $routefile, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
+	while (my $row = <$routefile>) {
 	  chomp $row;
 	  if($row =~ /^route\s+(.+)\s+to\s+(.*)$/) {
           my $search = $1; my $replace = $2;
@@ -155,20 +180,20 @@ sub load_route {
 	  	  $routes{$search} = $replace;
 	  }
 	}
-	close $fh;
+	close $routefile;
 	return %routes;
 }
 
 sub load_exec {
 	my %exec = ();
-	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
-	while (my $row = <$fh>) {
+	open( my $execfile, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
+	while (my $row = <$execfile>) {
 	  chomp $row;
 	  if($row =~ /^exec\s+(.+)\s+from\s+(.*)$/){
 	  	$exec{$1} = $2;
 	  }
 	}
-	close $fh;
+	close $execfile;
 	return %exec;
 }
 
