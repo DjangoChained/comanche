@@ -135,12 +135,16 @@ sub proj_statique {
         #close($CLIENT); exit;
         send_error($CLIENT, 418); exit;
     } elsif (-f $path) {
+        my $mimetype = mimetype($path);
+        if(!grep(/^$mimetype$/, ('text/plain', 'image/png', 'text/html'))) {
+            send_error($CLIENT, 415); exit;
+        }
         my $file;
         if(!open($file, $path)) {
             # Logging ici
             send_error($CLIENT, 500); exit;
         }
-        send_response_headers($CLIENT, 200, stat($path)->size, mimetype($path));
+        send_response_headers($CLIENT, 200, stat($path)->size, $mimetype);
         print $CLIENT $_ while(<$file>);
         close($file); close($CLIENT); exit;
     } else {
