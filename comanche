@@ -90,18 +90,44 @@ sub repartisseur {
 
 sub ouvrier {
     # Traitement d'une requête
-    my $CLIENT = shift;
-    my $LOGGER = shift;
-    my ($method, $path, $version) = split /\s/, <$CLIENT>, 3;
+    my ($CLIENT, $LOGGER) = (shift, shift);
+    my ($method, $url, $version) = split /\s/, <$CLIENT>, 3;
+    1 while((my $line = <$CLIENT>) !~ /^\s+$/);
     if($version !~ /HTTP\/1.1/) {
         send_error($CLIENT, 505); exit;
     }
     if($method ne "GET") {
         send_error($CLIENT, 405); exit;
     }
-    # TODO: Gestion des projections et logging
-    print $LOGGER time, ";;;;;;", "\n";
+    my %routes = load_route();
+    foreach my $search (keys(%routes)) {
+        if($url =~ /$search/) { # Projection statique trouvée
+            proj_statique($CLIENT, $LOGGER, eval("\"$routes{$search}\""));
+            exit;
+        }
+    }
+    %routes = load_exec();
+    foreach my $search (keys(%routes)) {
+        if($url =~ /$search/) { # Projection dynamique trouvée
+            proj_dynamique($CLIENT, $LOGGER, eval("\"$routes{$search}\""));
+            exit;
+        }
+    }
+    # TODO: Logging
+    print $LOGGER time, ";get;;;;;", "\n";
     send_error($CLIENT, 404); exit;
+}
+
+sub proj_statique {
+    # Gestion d'une projection statique
+    my ($CLIENT, $LOGGER, $path) = (shift, shift, shift);
+    # TODO
+}
+
+sub proj_dynamique {
+    # Gestion d'une projection dynamique
+    my ($CLIENT, $LOGGER, $path) = (shift, shift, shift);
+    # TODO
 }
 
 sub load_config {
@@ -123,8 +149,10 @@ sub load_route {
 	open( my $fh, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
 	while (my $row = <$fh>) {
 	  chomp $row;
-	  if($row =~ /^route\s+(.+)\s+to\s+(.*)$/){
-	  	$routes{$1} = $2;
+	  if($row =~ /^route\s+(.+)\s+to\s+(.*)$/) {
+          my $search = $1; my $replace = $2;
+          $replace =~ s/\\/\$/g;
+	  	  $routes{$search} = $replace;
 	  }
 	}
 	close $fh;
