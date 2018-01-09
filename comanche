@@ -242,6 +242,26 @@ sub get_repartisseur_pid {
     return $reppid;
 }
 
+sub get_folder_view {
+    my $dir = shift or die "Usage: $0 FILENAME\n";
+    opendir DIR,$dir;
+    my @dir = readdir(DIR);
+    close DIR;
+    print "<h1>Fichiers présents dans $dir :</h1>\n<ul>\n";
+    foreach(@dir){
+    	if ($_ ne "." && $_ ne ".."){
+	    	print "<li>";
+	        if(-d $dir . "/" . $_){
+	            print "<a href=\"$dir/$_\">$_</a>";
+	        }else{
+	            print "$_";
+	        }
+	        print "</li>\n";
+	    }
+    }
+    print "</ul>";
+}
+
 if($#ARGV == 0) {
     switch (lc $ARGV[0]) {
         case 'start' {
