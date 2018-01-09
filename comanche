@@ -96,67 +96,88 @@ sub ouvrier {
     my ($CLIENT, $LOGGER) = (shift, shift);
     my ($method, $url, $version) = split /\s/, <$CLIENT>, 3;
     1 while((my $line = <$CLIENT>) !~ /^\s+$/);
-    if($version !~ /HTTP\/1.1/) {
-        send_error($CLIENT, 505); exit;
-    }
     if($method ne "GET") {
-        send_error($CLIENT, 405); exit;
+        if($method eq "BREW" && $url =~ /coffee/) { # Voir RFC 2324
+            make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 418);
+            send_error($CLIENT, 418); exit;
+        } else {
+            make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 405);
+            send_error($CLIENT, 405); exit;
+        }
+    }
+    if($version !~ /HTTP\/1.1/) {
+        make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 505);
+        send_error($CLIENT, 505); exit;
     }
     my %routes = load_route();
     foreach my $search (keys(%routes)) {
         if($url =~ /$search/) { # Projection statique trouvée
-            proj_statique($CLIENT, $LOGGER, eval("\"$routes{$search}\""));
+            proj_statique($CLIENT, $LOGGER, "$method $url $version", eval("\"$routes{$search}\""));
             exit;
         }
     }
     %routes = load_exec();
     foreach my $search (keys(%routes)) {
         if($url =~ /$search/) { # Projection dynamique trouvée
-            proj_dynamique($CLIENT, $LOGGER, eval("\"$routes{$search}\""));
+            proj_dynamique($CLIENT, $LOGGER, "$method $url $version", eval("\"$routes{$search}\""));
             exit;
         }
     }
-    # TODO: Logging
-    print $LOGGER time, ";get;;;;;", "\n";
+    make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 404);
     send_error($CLIENT, 404); exit;
 }
 
 sub proj_statique {
     # Gestion d'une projection statique
-    my ($CLIENT, $LOGGER, $path) = (shift, shift, shift);
+    my ($CLIENT, $LOGGER, $request, $path) = (shift, shift, shift, shift);
     my %config = load_config();
     if (-d $path) {
         if(-f "$path/$config{'index'}") {
-            proj_statique($CLIENT, $LOGGER, "$path/$config{'index'}"); exit;
+            proj_statique($CLIENT, $LOGGER, $request, "$path/$config{'index'}"); exit;
         }
-        #my $html = get_folder_view($path);
-        #send_response_headers($CLIENT, 200, unpack("%32b*", $html), "text/html");
-        #print $CLIENT $html;
-        #close($CLIENT); exit;
-        send_error($CLIENT, 418); exit;
+        my $html = get_folder_view($path);
+        open(my $folderview, '>', '/tmp/comanche.html');
+        print $folderview $html;
+        close($folderview);
+        send_response_headers($CLIENT, 200, stat('/tmp/comanche.html')->size, "text/html");
+        print $CLIENT $html;
+        make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 200);
+        close($CLIENT); unlink('/tmp/comanche.html'); exit;
     } elsif (-f $path) {
         my $mimetype = mimetype($path);
         if(!grep(/^$mimetype$/, ('text/plain', 'image/png', 'text/html'))) {
+            make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 415);
             send_error($CLIENT, 415); exit;
         }
         my $file;
         if(!open($file, $path)) {
-            # Logging ici
+            make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 500);
             send_error($CLIENT, 500); exit;
         }
         send_response_headers($CLIENT, 200, stat($path)->size, $mimetype);
         print $CLIENT $_ while(<$file>);
+        make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 200);
         close($file); close($CLIENT); exit;
     } else {
-        # TODO: Logging ici
+        make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 404);
         send_error($CLIENT, 404); exit;
     }
 }
 
 sub proj_dynamique {
     # Gestion d'une projection dynamique
-    my ($CLIENT, $LOGGER, $path) = (shift, shift, shift);
+    my ($CLIENT, $LOGGER, $request, $path) = (shift, shift, shift, shift);
     # TODO
+}
+
+sub make_response_log {
+    # Créer un log de réponse HTTP.
+    my ($CLIENT, $LOGGER, $type, $request, $routed, $code) = (shift, shift, shift, shift, shift, shift);
+    my $peer = getpeername($CLIENT);
+    my ($port, $iaddr) = sockaddr_in($peer);
+    my $ip = inet_ntoa($iaddr);
+    $request =~ s/[\r\n]+//;
+    print $LOGGER time, ";$type;$ip;$request;$routed;$code\n";
 }
 
 sub load_config {
@@ -243,23 +264,19 @@ sub get_repartisseur_pid {
 }
 
 sub get_folder_view {
-    my $dir = shift or die "Usage: $0 FILENAME\n";
+    # Affichage du contenu d'un répertoire
+    my $dir = shift;
     opendir DIR,$dir;
     my @dir = readdir(DIR);
     close DIR;
-    print "<h1>Fichiers présents dans $dir :</h1>\n<ul>\n";
-    foreach(@dir){
-    	if ($_ ne "." && $_ ne ".."){
-	    	print "<li>";
-	        if(-d $dir . "/" . $_){
-	            print "<a href=\"$dir/$_\">$_</a>";
-	        }else{
-	            print "$_";
-	        }
-	        print "</li>\n";
+    my $output = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\" /><title>Index of $dir</title></head><body>"
+    . "<h1>Index of $dir</h1><hr><ul><li><a href=\"..\"><em>Dossier parent</em></a></li>";
+    foreach(@dir) {
+    	if ($_ ne "." and $_ ne "..") {
+            $output .= "<li><a href=\"$_\">$_</a></li>";
 	    }
     }
-    print "</ul>";
+    return "$output</ul><hr><em>comanche/1.0 Server</body></html>";
 }
 
 if($#ARGV == 0) {
