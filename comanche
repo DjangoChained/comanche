@@ -101,8 +101,13 @@ sub ouvrier {
         send_error($CLIENT, 505); exit;
     }
     if($method ne "GET") {
-        make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 405);
-        send_error($CLIENT, 405); exit;
+        if($method eq "BREW" && $url =~ /coffee/) { # Voir RFC 2324
+            make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 418);
+            send_error($CLIENT, 418); exit;
+        } else {
+            make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 405);
+            send_error($CLIENT, 405); exit;
+        }
     }
     my %routes = load_route();
     foreach my $search (keys(%routes)) {
