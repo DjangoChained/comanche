@@ -96,10 +96,6 @@ sub ouvrier {
     my ($CLIENT, $LOGGER) = (shift, shift);
     my ($method, $url, $version) = split /\s/, <$CLIENT>, 3;
     1 while((my $line = <$CLIENT>) !~ /^\s+$/);
-    if($version !~ /HTTP\/1.1/) {
-        make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 505);
-        send_error($CLIENT, 505); exit;
-    }
     if($method ne "GET") {
         if($method eq "BREW" && $url =~ /coffee/) { # Voir RFC 2324
             make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 418);
@@ -108,6 +104,10 @@ sub ouvrier {
             make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 405);
             send_error($CLIENT, 405); exit;
         }
+    }
+    if($version !~ /HTTP\/1.1/) {
+        make_response_log($CLIENT, $LOGGER, "", "$method $url $version", "", 505);
+        send_error($CLIENT, 505); exit;
     }
     my %routes = load_route();
     foreach my $search (keys(%routes)) {

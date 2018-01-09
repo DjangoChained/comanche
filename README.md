@@ -4,7 +4,8 @@ Serveur HTTP en Perl au nom un poil inspiré d'Apache.
 
 ## Notes de développement
 
-* Les projections dynamiques sont supportées, mais elles ne prennent pas en charge les variables d'environnement nécessaires pour CGI.
+* Les projections dynamiques sont supportées, mais elles ne prennent pas en charge les variables d'environnement nécessaires pour CGI ;
+* L'erreur `418 I'm a teapot` est renvoyée lors d'une tentative de préparation de café à l'aide de l'[HyperText Coffee Pot Control Protocol](https://tools.ietf.org/html/rfc2324).
 
 ## Mise en route
 
