@@ -167,7 +167,36 @@ sub proj_statique {
 sub proj_dynamique {
     # Gestion d'une projection dynamique
     my ($CLIENT, $LOGGER, $request, $path) = (shift, shift, shift, shift);
-    # TODO
+    if (-f $path) {
+        my $mimetype = mimetype($path);
+        if(!grep(/^$mimetype$/, ('application/x-sh'))) {
+            make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 415);
+            send_error($CLIENT, 415);
+        }
+        exec "$path 1>stdout.txt 2>stderr.txt"
+        if (-f "./stdout.txt") {
+            print "HTTP/1.1 200 OK\nContent-Type: text/html\nServer: comanche/1.0\n\n<html><head><title>Résultat de $path</title></head><body style=\"font-size:100vh\">";
+            open (FH, "stdout.txt");
+            while (<FH>) {
+                print (<FH>);
+            }
+            print "</body></html>\n";
+        }
+        elsif (-f "./stderr.txt") {
+            print "HTTP/1.1 200 OK\nContent-Type: text/html\nServer: comanche/1.0\n\n<html><head><title>Erreur de $path</title></head><body style=\"font-size:100vh\">";
+            open (FH, "stderr.txt");
+            while (<FH>) {
+                print (<FH>);
+            }
+            print "</body></html>\n";
+        }
+        unlink "./stdout.txt";
+        unlink "./stderr.txt";
+        exit;
+    } else {
+        make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 404);
+        send_error($CLIENT, 404); exit;
+    }
 }
 
 sub make_response_log {
