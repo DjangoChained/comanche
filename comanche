@@ -116,10 +116,10 @@ sub ouvrier {
             exit;
         }
     }
-    %routes = load_exec();
-    foreach my $search (keys(%routes)) {
+    my %exec = load_exec();
+    foreach my $search (keys(%exec)) {
         if($url =~ /$search/) { # Projection dynamique trouvée
-            proj_dynamique($CLIENT, $LOGGER, "$method $url $version", eval("\"$routes{$search}\""));
+            proj_dynamique($CLIENT, $LOGGER, "$method $url $version", eval("\"$exec{$search}\""));
             exit;
         }
     }
@@ -169,24 +169,24 @@ sub proj_dynamique {
     my ($CLIENT, $LOGGER, $request, $path) = (shift, shift, shift, shift);
     if (-f $path) {
         if(!-x $path) {
-            make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 500);
+            make_response_log($CLIENT, $LOGGER, "get-d", $request, $path, 500);
             send_error($CLIENT, 500); exit;
         }
-        my $result = "./tmp/stdout.html";
+        my $result = "/tmp/stdout.html";
         system("\"$path\" 1>$result");
         if (-f $result) {
             my $file;
             if(!open($file, $result)) {
-                make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 500);
+                make_response_log($CLIENT, $LOGGER, "get-d", $request, $path, 500);
                 send_error($CLIENT, 500); exit;
             }
             send_response_headers($CLIENT, 200, stat($result)->size, "text/html");
             print $CLIENT $_ while(<$file>);
-            make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 200);
+            make_response_log($CLIENT, $LOGGER, "get-d", $request, $path, 200);
             close($file); close($CLIENT); exit;
         }
     } else {
-        make_response_log($CLIENT, $LOGGER, "get-s", $request, $path, 404);
+        make_response_log($CLIENT, $LOGGER, "get-d", $request, $path, 404);
         send_error($CLIENT, 404); exit;
     }
 }
@@ -220,7 +220,7 @@ sub load_route {
 	open( my $routefile, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
 	while (my $row = <$routefile>) {
 	  chomp $row;
-	  if($row =~ /^route\s+(.+)\s+to\s+(.*)$/) {
+	  if($row =~ /^route\s+(.+)\s+to\s+(.+)$/) {
           my $search = $1; my $replace = $2;
           $replace =~ s/\\/\$/g;
 	  	  $routes{$search} = $replace;
@@ -235,8 +235,10 @@ sub load_exec {
 	open( my $execfile, '<', $configfilepath ) or die "Impossible d'ouvrir $configfilepath: $!";
 	while (my $row = <$execfile>) {
 	  chomp $row;
-	  if($row =~ /^exec\s+(.+)\s+from\s+(.*)$/){
-	  	$exec{$1} = $2;
+	  if($row =~ /^exec\s+(.+)\s+from\s+(.+)$/){
+		my $search = $1; my $replace = $2;
+		$replace =~ s/\\/\$/g;
+	  	$exec{$search} = $replace;
 	  }
 	}
 	close $execfile;
